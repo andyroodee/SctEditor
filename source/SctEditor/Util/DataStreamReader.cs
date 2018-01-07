@@ -15,6 +15,11 @@ namespace SctEditor.Util
             get { return _stream.Position; }
             set { _stream.Position = value; }
         }
+
+        public long Length
+        {
+            get { return _stream.Length; }
+        }
         
         public DataStreamReader(Stream stream, Endianness endianness)
         {
@@ -27,6 +32,18 @@ namespace SctEditor.Util
             StreamPosition = offset;
             SctItemHeader itemHeader = SctItemHeader.CreateFromStream(this);
             return itemHeader;
+        }
+        
+        public byte[] ReadBytes(int length)
+        {
+            byte[] array = new byte[length];
+            _stream.Read(array, 0, length);
+            return array;
+        }
+
+        public byte ReadByte()
+        {
+            return (byte)_stream.ReadByte();
         }
 
         public string ReadString(long offset, int maxLength)

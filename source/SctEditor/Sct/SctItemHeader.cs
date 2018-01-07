@@ -9,12 +9,14 @@ namespace SctEditor.Sct
 
         public string Name { get; set; }
         public uint Offset { get; set; }
+        public uint DataOffset { get; set; }
+        public uint DataSize { get; set; }
 
         public static SctItemHeader CreateFromStream(DataStreamReader dsr)
         {
             SctItemHeader itemHeader = new SctItemHeader();
-            itemHeader.Name = dsr.ReadString(NameSize);
             itemHeader.Offset = dsr.ReadUint();
+            itemHeader.Name = dsr.ReadString(NameSize);
             return itemHeader;
         }
     }
