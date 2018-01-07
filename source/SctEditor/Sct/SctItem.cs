@@ -8,7 +8,7 @@ namespace SctEditor.Sct
 
         private const int ItemPreambleSize = 16;
 
-        public static SctItem CreateFromStream(DataStreamReader dsr, uint size)
+        public static SctItem CreateFromStream(DataStream dsr, uint size)
         {
             // All we care about right now is if it's a dialog item or not.
             // Skip the preamble

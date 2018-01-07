@@ -5,26 +5,27 @@ using System.Text;
 
 namespace SctEditor.Util
 {
-    public class DataStreamReader
+    public class DataStream
     {
-        private Endianness _endianness;
-        private Stream _stream;
+        public Stream Stream { get; private set; }
+
+        public Endianness Endianness { get; private set; }
 
         public long StreamPosition
         {
-            get { return _stream.Position; }
-            set { _stream.Position = value; }
+            get { return Stream.Position; }
+            set { Stream.Position = value; }
         }
 
         public long Length
         {
-            get { return _stream.Length; }
+            get { return Stream.Length; }
         }
         
-        public DataStreamReader(Stream stream, Endianness endianness)
+        public DataStream(Stream stream, Endianness endianness)
         {
-            _stream = stream;
-            _endianness = endianness;
+            Stream = stream;
+            Endianness = endianness;
         }
         
         public SctItemHeader ReadSctItemHeader(long offset)
@@ -37,13 +38,13 @@ namespace SctEditor.Util
         public byte[] ReadBytes(int length)
         {
             byte[] array = new byte[length];
-            _stream.Read(array, 0, length);
+            Stream.Read(array, 0, length);
             return array;
         }
 
         public byte ReadByte()
         {
-            return (byte)_stream.ReadByte();
+            return (byte)Stream.ReadByte();
         }
 
         public string ReadString(long offset, int maxLength)
@@ -54,7 +55,7 @@ namespace SctEditor.Util
 
             for (int i = 0; i < maxLength; i++)
             {
-                char c = (char)_stream.ReadByte();
+                char c = (char)Stream.ReadByte();
                 if (c != '\0')
                 {
                     sb.Append(c);
@@ -73,9 +74,9 @@ namespace SctEditor.Util
         {
             byte[] array = new byte[4];
             StreamPosition = offset;
-            _stream.Read(array, 0, 4);
+            Stream.Read(array, 0, 4);
             var value = BitConverter.ToUInt32(array, 0);
-            if (_endianness == Endianness.BigEndian)
+            if (Endianness == Endianness.BigEndian)
             {
                 return EndianUtil.SwapEndian(value);
             }
@@ -88,6 +89,35 @@ namespace SctEditor.Util
         public uint ReadUint()
         {
             return ReadUint(StreamPosition);
+        }
+
+        public void WriteBytes(byte[] values)
+        {
+            Stream.Write(values, 0, values.Length);
+        }
+
+        public void WriteUint(uint value)
+        {
+            if (Endianness == Endianness.BigEndian)
+            {
+                value = EndianUtil.SwapEndian(value);
+            }
+            Stream.Write(BitConverter.GetBytes(value), 0, 4);
+        }
+
+        public void WriteString(string value, int length)
+        {
+            for (int i = 0; i < length; i++)
+            {
+                if (i < value.Length)
+                {
+                    Stream.WriteByte((byte)value[i]);
+                }
+                else
+                {
+                    Stream.WriteByte(0x0);
+                }
+            }
         }
     }
 }

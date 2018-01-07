@@ -1,15 +1,10 @@
-﻿using SctEditor.Util;
-using System;
+﻿using Extensions;
+using SctEditor.Util;
 using System.Collections.Generic;
+using System.IO;
 
 namespace SctEditor.Sct
 {
-    public enum Endianness
-    {
-        BigEndian,
-        LittleEndian
-    }
-
     public class SctFile
     {
         public uint SctItemCount { get; set; }
@@ -36,7 +31,7 @@ namespace SctEditor.Sct
             ItemHeaders.Add(itemHeader);
         }
 
-        public static SctFile CreateFromStream(DataStreamReader dsr)
+        public static SctFile CreateFromStream(DataStream dsr)
         {
             SctFile file = new SctFile();
 
@@ -56,12 +51,12 @@ namespace SctEditor.Sct
                     // Note: this assumes sequential ordering. If that proves false, we'd need to sort by offset first.
                     uint prevItemSize = itemHeader.Offset - file.ItemHeaders[(int)i - 1].Offset;
                     file.ItemHeaders[(int)i - 1].DataSize = prevItemSize;
-                    Console.WriteLine("Data size: " + prevItemSize);
+                    //Console.WriteLine("Data size: " + prevItemSize);
                 }
-                Console.WriteLine("Name: {0, -16}\tOffset: {1:X8}", itemHeader.Name, itemHeader.Offset);
+                //Console.WriteLine("Name: {0, -16}\tOffset: {1:X8}", itemHeader.Name, itemHeader.Offset);
 
                 itemHeader.DataOffset = SctItemStartOffset + file.ItemHeaderSectionSize + itemHeader.Offset;
-                Console.WriteLine("Data at: {0:X8}", itemHeader.DataOffset);
+                //Console.WriteLine("Data at: {0:X8}", itemHeader.DataOffset);
 
                 file.AddItemHeader(itemHeader);
             }
@@ -80,6 +75,30 @@ namespace SctEditor.Sct
             }
 
             return file;
+        }
+
+        public void SaveToFile(string filename, Endianness endianness)
+        {
+            DataStream dsr = new DataStream(new MemoryStream(), endianness);
+            dsr.WriteBytes(FileHeaderPreamble);
+            dsr.WriteUint(SctItemCount);
+            for (int i = 0; i < ItemHeaders.Count; i++)
+            {
+                ItemHeaders[i].WriteToStream(dsr);
+            }
+            for (int i = 0; i < Items.Count; i++)
+            {
+                dsr.WriteBytes(Items[i].Data);
+            }
+            //if (endianness == Endianness.BigEndian)
+            //{
+            //    var compressed = Aklz.AKLZ.Compress(dsr.Stream);
+            //    File.WriteAllBytes(filename, compressed.ToArray());
+            //}
+            //else
+            {
+                File.WriteAllBytes(filename, dsr.Stream.ToByteArray());
+            }
         }
     }
 }

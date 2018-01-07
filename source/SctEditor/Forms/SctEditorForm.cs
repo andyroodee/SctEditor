@@ -10,6 +10,9 @@ namespace SctEditor
 {
     public partial class SctEditorForm : Form
     {
+        private SctFile currentFile;
+        private DataStream dataStreamReader;
+
         public SctEditorForm()
         {
             InitializeComponent();
@@ -24,17 +27,16 @@ namespace SctEditor
             {
                 var fileName = openFileDialog.FileName;
                 MemoryStream ms = new MemoryStream(File.ReadAllBytes(fileName));
-                DataStreamReader dsr;
                 // The first 4 bytes in the file can tell us if this is AKLZ compressed or not.
                 if (ms.ReadString(0, 4) == "AKLZ")
                 {
-                    dsr = new DataStreamReader(AKLZ.Decompress(ms), Util.Endianness.BigEndian);
+                    dataStreamReader = new DataStream(AKLZ.Decompress(ms), Util.Endianness.BigEndian);
                 }
                 else
                 {
-                    dsr = new DataStreamReader(ms, Util.Endianness.LittleEndian);
+                    dataStreamReader = new DataStream(ms, Util.Endianness.LittleEndian);
                 }
-                SctFile sctFile = SctFile.CreateFromStream(dsr);
+                currentFile = SctFile.CreateFromStream(dataStreamReader);
 
                 // We first need to decompress the file before getting the SctFile class to parse it.
                 //using (FileStream fs = new FileStream(fileName, FileMode.Open, FileAccess.Read, FileShare.Read))
@@ -55,6 +57,19 @@ namespace SctEditor
                 //    //    decompStream.WriteTo(bs);
                 //    //}
                 //}
+            }
+        }
+
+        private void saveSctButton_Click(object sender, EventArgs e)
+        {
+            if (currentFile == null)
+            {
+                return;
+            }
+            var saveDialog = new SaveFileDialog();
+            if (saveDialog.ShowDialog() == DialogResult.OK)
+            {
+                currentFile.SaveToFile(saveDialog.FileName, dataStreamReader.Endianness);
             }
         }
     }

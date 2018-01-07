@@ -12,12 +12,18 @@ namespace SctEditor.Sct
         public uint DataOffset { get; set; }
         public uint DataSize { get; set; }
 
-        public static SctItemHeader CreateFromStream(DataStreamReader dsr)
+        public static SctItemHeader CreateFromStream(DataStream dsr)
         {
             SctItemHeader itemHeader = new SctItemHeader();
             itemHeader.Offset = dsr.ReadUint();
             itemHeader.Name = dsr.ReadString(NameSize);
             return itemHeader;
+        }
+
+        public void WriteToStream(DataStream dsr)
+        {
+            dsr.WriteUint(Offset);
+            dsr.WriteString(Name, NameSize);
         }
     }
 }
