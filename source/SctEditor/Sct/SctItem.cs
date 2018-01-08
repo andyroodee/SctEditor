@@ -6,29 +6,36 @@ namespace SctEditor.Sct
     {
         public byte[] Data { get; set; }
 
-        private const int ItemPreambleSize = 16;
+        protected const int ItemPreambleSize = 16;
+        
+        public SctItem(byte[] rawData)
+        {
+            Data = rawData;
+        }
 
         public static SctItem CreateFromStream(DataStream dsr, uint size)
         {
             // All we care about right now is if it's a dialog item or not.
             // Skip the preamble
             long startPosition = dsr.StreamPosition;
-            dsr.StreamPosition += ItemPreambleSize;
+            //dsr.StreamPosition += ItemPreambleSize;
+            
+            byte[] rawData = dsr.ReadBytes((int)size);
+
             SctItem item;
             // Dialog items start with 5C 68 28
-            byte[] startBytes = dsr.ReadBytes(3);
-            if (startBytes[0] != 0x5C || 
-                startBytes[1] != 0x68 || 
-                startBytes[2] != 0x28)
+            if (size < ItemPreambleSize + 3 ||
+                rawData[ItemPreambleSize + 0] != 0x5C ||
+                rawData[ItemPreambleSize + 1] != 0x68 ||
+                rawData[ItemPreambleSize + 2] != 0x28)
             {
-                item = new SctItem();
+                item = new SctItem(rawData);
             }
             else
             {
-                item = new DialogItem();
+                item = new DialogItem(rawData);
             }
             dsr.StreamPosition = startPosition;
-            item.Data = dsr.ReadBytes((int)size);
             return item;
         }
     }
