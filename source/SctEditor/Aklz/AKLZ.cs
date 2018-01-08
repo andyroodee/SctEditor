@@ -1,3 +1,7 @@
+// Taken from the "3DSExplorer" project: https://github.com/Silenthal/3dsexplorer
+// Modified version of the LZSS class (https://github.com/Lectem/3dsexplorer/blob/master/3DSExplorer/Crypt/LZSS.cs)
+// to handle the specifics of AKLZ.
+
 using Extensions;
 using System.IO;
 

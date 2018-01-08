@@ -5,29 +5,33 @@ using SctEditor.Util;
 using System;
 using System.IO;
 using System.Windows.Forms;
+using System.Linq;
 
 namespace SctEditor
 {
     public partial class SctEditorForm : Form
     {
-        private SctFile currentFile;
-        private DataStream dataStreamReader;
+        private SctFile _currentFile;
+        private DataStream _dataStream;
+        private int _selectedItemIndex;
+        private DialogItem[] _dialogItems;
 
         public SctEditorForm()
         {
             InitializeComponent();
+            messageNumLabel.Visible = false;
         }
        
         private void saveToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            if (currentFile == null)
+            if (_currentFile == null)
             {
                 return;
             }
             var saveDialog = new SaveFileDialog();
             if (saveDialog.ShowDialog() == DialogResult.OK)
             {
-                currentFile.SaveToFile(saveDialog.FileName, dataStreamReader.Endianness);
+                _currentFile.SaveToFile(saveDialog.FileName, _dataStream.Endianness);
             }
         }
 
@@ -43,14 +47,45 @@ namespace SctEditor
                 // The first 4 bytes in the file can tell us if this is AKLZ compressed or not.
                 if (ms.ReadString(0, 4) == "AKLZ")
                 {
-                    dataStreamReader = new DataStream(AKLZ.Decompress(ms), Endianness.BigEndian);
+                    _dataStream = new DataStream(AKLZ.Decompress(ms), Endianness.BigEndian);
                 }
                 else
                 {
-                    dataStreamReader = new DataStream(ms, Endianness.LittleEndian);
+                    _dataStream = new DataStream(ms, Endianness.LittleEndian);
                 }
-                currentFile = SctFile.CreateFromStream(dataStreamReader);
+                _currentFile = SctFile.CreateFromStream(_dataStream);
+                _dialogItems = _currentFile.Items.OfType<DialogItem>().ToArray();
+                messageNumLabel.Visible = true;
+                DisplayDialogItems();
             }
+        }
+
+        private void DisplayDialogItems()
+        {
+            nameTextBox.Text = _dialogItems[_selectedItemIndex].Name;
+            messageTextBox.Text = _dialogItems[_selectedItemIndex].Message;
+            messageNumLabel.Text = string.Format("Message {0} of {1}", _selectedItemIndex + 1, _dialogItems.Length);
+        }
+
+        private void nextButton_Click(object sender, EventArgs e)
+        {
+            _selectedItemIndex = (_selectedItemIndex + 1) % _dialogItems.Length;
+            DisplayDialogItems();
+        }
+
+        private void previousButton_Click(object sender, EventArgs e)
+        {
+            _selectedItemIndex--;
+            if (_selectedItemIndex < 0)
+            {
+                _selectedItemIndex = _dialogItems.Length - 1;
+            }
+            DisplayDialogItems();
+        }
+
+        private void exitToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            Application.Exit();
         }
     }
 }

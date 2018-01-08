@@ -88,7 +88,16 @@ namespace SctEditor.Sct
             }
             for (int i = 0; i < Items.Count; i++)
             {
-                dsr.WriteBytes(Items[i].Data);
+                if (Items[i] is DialogItem)
+                {
+                    var dialogItem = (DialogItem)Items[i];
+                    byte[] data = dialogItem.ToByteArray();
+                    dsr.WriteBytes(data);
+                }
+                else
+                {
+                    dsr.WriteBytes(Items[i].Data);
+                }
             }
             //if (endianness == Endianness.BigEndian)
             //{
