@@ -17,6 +17,7 @@ namespace SctEditor.Sct
         private const byte Newline = 0x6E;
         private const byte EndMessageE = 0x65;
         private const byte EndMessageC = 0x63;
+        private const byte EndMessageA = 0x61;
         private const byte EllipsisStart = 0x81;
         private const byte EllipsisEnd = 0x63;
         private const byte LeftQuote = 0x5B;
@@ -25,6 +26,7 @@ namespace SctEditor.Sct
         private const byte NameTypeOffset = 0x14; // The name type offset from the start of raw data.
         
         private uint _messageOffset;
+        private byte _messageEndType;
 
         public DialogItem(byte[] rawData) : base(rawData)
         {
@@ -42,21 +44,34 @@ namespace SctEditor.Sct
             using (MemoryStream ms = new MemoryStream())
             {
                 ms.Write(Data, 0, ItemPreambleSize);
-                ms.Write(NamePreamble, 0, NamePreamble.Length);
-                if (!string.IsNullOrEmpty(Name))
-                {
-                    ms.Write(StartName);
-                    ms.Write(Encoding.ASCII.GetBytes(Name.Replace(' ', (char)0x7F)));
-                    ms.Write(NameEnd);                    
-                }
-                else
-                {
-                    ms.Write(NoName);
-                    ms.Write(RightParen);
-                }
+                WriteNameToStream(ms);
+                WriteMessageToStream(ms);
+
                 result = ms.ToArray();
             }
             return result;
+        }
+
+        private void WriteNameToStream(Stream stream)
+        {
+            stream.Write(NamePreamble, 0, NamePreamble.Length);
+            if (!string.IsNullOrEmpty(Name))
+            {
+                stream.Write(StartName);
+                stream.Write(Encoding.ASCII.GetBytes(Name.Replace(' ', (char)0x7F)));
+                stream.Write(NameEnd);
+            }
+            else
+            {
+                stream.Write(NoName);
+                stream.Write(RightParen);
+            }
+        }
+
+        private void WriteMessageToStream(Stream stream)
+        {
+            //string encoded = Message.Replace("...", )
+            //Message.Replace
         }
         
         private void ReadName()
@@ -101,8 +116,9 @@ namespace SctEditor.Sct
                     {
                         sb.AppendLine();
                     }
-                    else if (next == EndMessageE || next == EndMessageC)
+                    else if (next == EndMessageE || next == EndMessageC || next == EndMessageA)
                     {
+                        _messageEndType = next;
                         break;
                     }
                     offset += 2;
