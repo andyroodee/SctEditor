@@ -46,10 +46,21 @@ namespace SctEditor.Sct
                 ms.Write(Data, 0, ItemPreambleSize);
                 WriteNameToStream(ms);
                 WriteMessageToStream(ms);
+                PadItem(ms);
 
                 result = ms.ToArray();
             }
             return result;
+        }
+
+        // Item sizes have to be a multiple of 4, which means we might need to pad with 0 bytes.
+        private void PadItem(Stream stream)
+        {
+            int padSize = (byte)(4 - stream.Length % 4);
+            for (int i = 0; i < padSize; i++)
+            {
+                stream.Write((byte)0);
+            }
         }
 
         private void WriteNameToStream(Stream stream)
@@ -70,8 +81,59 @@ namespace SctEditor.Sct
 
         private void WriteMessageToStream(Stream stream)
         {
-            //string encoded = Message.Replace("...", )
-            //Message.Replace
+            bool inQuote = false;
+            for (int i = 0; i < Message.Length; i++)
+            {
+                char c = Message[i];
+                if (c == ' ')
+                {
+                    stream.Write(Space);
+                }
+                else if (c == '\r')
+                {
+                    stream.Write(EscapeSeqStart);
+                    stream.Write(Newline);
+                    i++; // skip the \n
+                }
+                else if (c == '\n')
+                {
+                    stream.Write(EscapeSeqStart);
+                    stream.Write(Newline);
+                }
+                else if (c == '.')
+                {
+                    if (i + 2 < Message.Length && Message[i + 1] == '.' && Message[i + 2] == '.')
+                    {
+                        stream.Write(EllipsisStart);
+                        stream.Write(EllipsisEnd);
+                        i += 2;
+                    }
+                    else
+                    {
+                        stream.Write((byte)c);
+                    }
+                }
+                else if (c == '"')
+                {
+                    if (inQuote)
+                    {
+                        stream.Write(RightQuote);                        
+                    }
+                    else
+                    {
+                        stream.Write(LeftQuote);
+                    }
+                    inQuote = !inQuote;
+                }
+                else
+                {
+                    // TODO: This might be a good place to check if the character is valid.
+                    stream.Write((byte)c);
+                }
+            }
+            // Write out the proper ending character
+            stream.Write(EscapeSeqStart);
+            stream.Write(_messageEndType);
         }
         
         private void ReadName()
