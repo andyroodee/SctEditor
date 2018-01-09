@@ -87,5 +87,15 @@ namespace SctEditor
         {
             Application.Exit();
         }
+
+        private void messageTextBox_TextChanged(object sender, EventArgs e)
+        {
+            _dialogItems[_selectedItemIndex].Message = messageTextBox.Text;
+        }
+
+        private void nameTextBox_TextChanged(object sender, EventArgs e)
+        {
+            _dialogItems[_selectedItemIndex].Name = nameTextBox.Text;
+        }
     }
 }
