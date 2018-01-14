@@ -27,14 +27,14 @@ namespace SctEditor.Sct
             public long Offset { get; set; }
         }
 
-        public Dictionary<int, PointerRecord> PointerRecords { get; set; }
+        public Dictionary<int, List<PointerRecord>> PointerRecords { get; set; }
 
         public SctFile()
         {
             FileHeaderPreamble = new byte[SctItemCountOffset];
             ItemHeaders = new List<SctItemHeader>();
             Items = new List<SctItem>();
-            PointerRecords = new Dictionary<int, PointerRecord>();
+            PointerRecords = new Dictionary<int, List<PointerRecord>>();
         }
 
         public void AddItemHeader(SctItemHeader itemHeader)
@@ -65,15 +65,6 @@ namespace SctEditor.Sct
                 }
 
                 itemHeader.DataOffset = SctItemStartOffset + file.ItemHeaderSectionSize + itemHeader.Offset;
-                //if (pugs.Contains(itemHeader.Offset))
-                //{
-                //    System.Console.WriteLine("{0:X4} {3, -16} Offset: {1:X8} Data Offset: {2:X8}", i, itemHeader.Offset, itemHeader.DataOffset, itemHeader.Name);
-                //}
-                //if (pugs.Contains(itemHeader.DataOffset))
-                //{
-                   // System.Console.WriteLine("Data Offset: {0:X8}", itemHeader.DataOffset);
-                //}
-
                 file.AddItemHeader(itemHeader);
             }
 
@@ -87,61 +78,56 @@ namespace SctEditor.Sct
                 dsr.StreamPosition = file.ItemHeaders[i].DataOffset;
                 var item = SctItem.CreateFromStream(dsr, file.ItemHeaders[i].DataSize);
 
+                bool isLastItem = (i == file.ItemHeaders.Count - 1);
                 uint start = file.ItemHeaders[i].DataOffset;
-                DataStream ditty = new DataStream(new MemoryStream(item.Data), Endianness.BigEndian);
-                //using (MemoryStream lol = new MemoryStream(item.Data))
+                DataStream ds = new DataStream(new MemoryStream(item.Data), Endianness.BigEndian);
+                for (long offset = 0; offset < file.ItemHeaders[i].DataSize; offset += 4)
                 {
-                    //long offset = 0;
-                    for (long offset = 0; offset < file.ItemHeaders[i].DataSize; offset += 4)
+                    long relOffset = ds.ReadUint();
+                    long absOffset = relOffset + start + offset;
+                    long filenameSectionOffset = file.ItemHeaders[file.ItemHeaders.Count - 1].DataOffset;
+                    if (!isLastItem && absOffset >= filenameSectionOffset && absOffset < dsr.Length)
                     {
-                        // var val = ditty.ReadUint() + offset;
-                        long boo = ditty.ReadUint();
-                        // var val = ditty.ReadUint() + start + offset;
-                        long val = boo + start + offset;
-                        long filenameSectionOffset = file.ItemHeaders[file.ItemHeaders.Count - 1].DataOffset;
-                        if (val >= filenameSectionOffset && val < dsr.Length)
+                        long oldPos = dsr.StreamPosition;
+                        dsr.Stream.Seek(absOffset, SeekOrigin.Begin);
+                        int nameLength = 0;
+                        while (true)
                         {
-                            long oldPos = dsr.StreamPosition;
-                            dsr.Stream.Seek(val, SeekOrigin.Begin);
-                            int nameLength = 0;
-                            while (true)
+                            byte b = dsr.ReadByte();
+                            char c = (char)b;
+                            if (char.IsLetterOrDigit(c) || c == '.' || c == '_')
                             {
-                                byte b = dsr.ReadByte();
-                                if (char.IsLetterOrDigit((char)b) || (char)b == '.')
-                                {
-                                    nameLength++;
-                                }
-                                else if (b == 0 && nameLength > 0)
-                                {
-                                    file.ItemHeaders[i].FileNamePointers.Add(offset + start);
-                                    System.Console.WriteLine("{1} Could point to file name at {0:X8}", offset + start, file.ItemHeaders[i].Name);
-                                    break;
-                                }
-                                else
-                                {
-                                    break;
-                                }
+                                nameLength++;
+                            }
+                            else if (b == 0 && nameLength > 0)
+                            {
+                                file.ItemHeaders[i].FileNamePointers.Add(offset);
+                                break;
+                            }
+                            else
+                            {
+                                break;
+                            }
 
-                            }                           
-                            dsr.Stream.Seek(oldPos, SeekOrigin.Begin);
-                        }
-                        if (val <= int.MaxValue)
+                        }                           
+                        dsr.Stream.Seek(oldPos, SeekOrigin.Begin);
+                    }
+                    if (absOffset <= int.MaxValue)
+                    {
+                        for (int j = 0; j < file.ItemHeaders.Count; j++)
                         {
-                            for (int j = 0; j < file.ItemHeaders.Count; j++)
+                            if (i != j && file.ItemHeaders[j].DataOffset == absOffset)
                             {
-                                if (i != j && file.ItemHeaders[j].DataOffset == val)
+                                if (!file.PointerRecords.ContainsKey(i))
                                 {
-                                    file.PointerRecords.Add(i, new PointerRecord { TargetIndex = j, Offset = offset });
-                                    System.Console.WriteLine("Possible pointer from {0} to {1} at {2:X8}", file.ItemHeaders[i].Name, file.ItemHeaders[j].Name, offset + start);
+                                    file.PointerRecords.Add(i, new List<PointerRecord>());
                                 }
+                                var pointersForItem = file.PointerRecords[i];
+                                pointersForItem.Add(new PointerRecord { TargetIndex = j, Offset = offset });
                             }
                         }
                     }
                 }
-                
-                //System.Console.WriteLine("Data size: " + file.ItemHeaders[i].DataSize);
-
-               // File.WriteAllBytes(file.ItemHeaders[i].Name, item.Data);
 
                 file.Items.Add(item);
             }
@@ -187,6 +173,7 @@ namespace SctEditor.Sct
             }
             for (int i = 0; i < dataBlocks.Count; i++)
             {
+                AdjustPointers(i);
                 dsr.WriteBytes(dataBlocks[i]);
             }
             if (endianness == Endianness.BigEndian)
@@ -203,29 +190,33 @@ namespace SctEditor.Sct
 
         private void AdjustPointers(int itemIndex)
         {
+            DataStream ds = new DataStream(new MemoryStream(Items[itemIndex].Data), Endianness.BigEndian);
+
             // Adjust the file name pointers
             for (int i = 0; i < ItemHeaders[itemIndex].FileNamePointers.Count; i++)
             {
-                ItemHeaders[itemIndex].FileNamePointers[i] += _filenamePointerAdjust;
+                var offset = ItemHeaders[itemIndex].FileNamePointers[i];
+                var newPointer = ds.ReadUint(offset) + _filenamePointerAdjust;
+                Items[itemIndex].Data[offset + 0] = (byte)((newPointer & 0xff000000) >> 24);
+                Items[itemIndex].Data[offset + 1] = (byte)((newPointer & 0x00ff0000) >> 16);
+                Items[itemIndex].Data[offset + 2] = (byte)((newPointer & 0x0000ff00) >> 8);
+                Items[itemIndex].Data[offset + 3] = (byte)(newPointer & 0x000000ff);
             }
 
-            uint start = ItemHeaders[itemIndex].DataOffset;
-            DataStream ditty = new DataStream(new MemoryStream(Items[itemIndex].Data), Endianness.BigEndian);
-            for (long offset = 0; offset < ditty.Length; offset += 4)
-            {
-                // var val = ditty.ReadUint() + offset;
-                long boo = ditty.ReadUint();
-                // var val = ditty.ReadUint() + start + offset;
-                long val = boo + start + offset;
-                
-                if (val <= int.MaxValue)
+            if (PointerRecords.ContainsKey(itemIndex))
+            {                
+                var records = PointerRecords[itemIndex];
+                for (int i = 0; i < records.Count; i++)
                 {
-                    for (int i = 0; i < ItemHeaders.Count; i++)
+                    var targetItem = ItemHeaders[records[i].TargetIndex];
+                    if (targetItem.PointerAdjust > 0)
                     {
-                        if (itemIndex != i && ItemHeaders[i].DataOffset == val)
-                        {
-                            System.Console.WriteLine("Possible pointer from {0} to {1} at {2:X8}", ItemHeaders[i].Name, ItemHeaders[i].Name, offset + start);
-                        }
+                        var offset = records[i].Offset;
+                        var newPointer = ds.ReadUint(offset) + targetItem.PointerAdjust;
+                        Items[itemIndex].Data[offset + 0] = (byte)((newPointer & 0xff000000) >> 24);
+                        Items[itemIndex].Data[offset + 1] = (byte)((newPointer & 0x00ff0000) >> 16);
+                        Items[itemIndex].Data[offset + 2] = (byte)((newPointer & 0x0000ff00) >> 8);
+                        Items[itemIndex].Data[offset + 3] = (byte)(newPointer & 0x000000ff);
                     }
                 }
             }
