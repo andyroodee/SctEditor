@@ -29,6 +29,9 @@ namespace SctEditor
                 return;
             }
             var saveDialog = new SaveFileDialog();
+            saveDialog.AddExtension = true;
+            saveDialog.DefaultExt = ".sct";
+            saveDialog.Filter = "SCT Files (*.sct)|*.sct|All files (*.*)|*.*";
             if (saveDialog.ShowDialog() == DialogResult.OK)
             {
                 _currentFile.SaveToFile(saveDialog.FileName, _dataStream.Endianness);

@@ -1,4 +1,7 @@
-﻿using SctEditor.Sct;
+﻿// An Endian-aware wrapper around a Stream.
+// It assumes that the host computer reading the stream is little endian.
+
+using SctEditor.Sct;
 using System;
 using System.IO;
 using System.Text;
