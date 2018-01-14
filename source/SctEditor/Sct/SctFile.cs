@@ -16,18 +16,18 @@ namespace SctEditor.Sct
         // The first 8 bytes in the file should not be changed, so we'll record them here.
         public byte[] FileHeaderPreamble { get; private set; }
 
-        public List<SctItemHeader> ItemHeaders { get; private set; }
+        private List<SctItemHeader> ItemHeaders { get; set; }
         public List<SctItem> Items { get; private set; }
 
         private long _filenamePointerAdjust = 0;
 
-        public class PointerRecord
+        private class PointerRecord
         {
             public int TargetIndex { get; set; }
             public long Offset { get; set; }
         }
 
-        public Dictionary<int, List<PointerRecord>> PointerRecords { get; set; }
+        private Dictionary<int, List<PointerRecord>> PointerRecords { get; set; }
 
         public SctFile()
         {
@@ -42,58 +42,48 @@ namespace SctEditor.Sct
             ItemHeaders.Add(itemHeader);
         }
 
-        public static SctFile CreateFromStream(DataStream dsr)
+        private void ReadItemHeaders(DataStream ds)
         {
-            SctFile file = new SctFile();
-
-            file.FileHeaderPreamble = dsr.ReadBytes(SctItemCountOffset);
-            // Read how many items there are.
-            file.SctItemCount = dsr.ReadUint(SctItemCountOffset);
-            // This then tells us the size of the item header section
-            file.ItemHeaderSectionSize = file.SctItemCount * SctItemHeader.HeaderSize;
-
-            // Read the item headers.
-            for (uint i = 0; i < file.SctItemCount; i++)
+            for (uint i = 0; i < SctItemCount; i++)
             {
                 uint offset = SctItemStartOffset + i * SctItemHeader.HeaderSize;
-                SctItemHeader itemHeader = dsr.ReadSctItemHeader(offset);
+                SctItemHeader itemHeader = ds.ReadSctItemHeader(offset);
                 if (i > 0)
                 {
                     // Note: this assumes sequential ordering. If that proves false, we'd need to sort by offset first.
-                    uint prevItemSize = itemHeader.Offset - file.ItemHeaders[(int)i - 1].Offset;
-                    file.ItemHeaders[(int)i - 1].DataSize = prevItemSize;
+                    uint prevItemSize = itemHeader.Offset - ItemHeaders[(int)i - 1].Offset;
+                    ItemHeaders[(int)i - 1].DataSize = prevItemSize;
                 }
 
-                itemHeader.DataOffset = SctItemStartOffset + file.ItemHeaderSectionSize + itemHeader.Offset;
-                file.AddItemHeader(itemHeader);
+                itemHeader.DataOffset = SctItemStartOffset + ItemHeaderSectionSize + itemHeader.Offset;
+                AddItemHeader(itemHeader);
             }
+        }
 
-            // Size of the final item is "whatever was left"
-            uint finalItemSize = (uint)dsr.Length - file.ItemHeaders[(int)file.SctItemCount - 1].DataOffset;
-            file.ItemHeaders[(int)file.SctItemCount - 1].DataSize = finalItemSize;
-
-            // Now that we know the header information, we can read in the data blocks.
-            for (int i = 0; i < file.ItemHeaders.Count; i++)
+        private void ReadDataBlocks(DataStream ds)
+        {
+            for (int i = 0; i < ItemHeaders.Count; i++)
             {
-                dsr.StreamPosition = file.ItemHeaders[i].DataOffset;
-                var item = SctItem.CreateFromStream(dsr, file.ItemHeaders[i].DataSize);
+                ds.StreamPosition = ItemHeaders[i].DataOffset;
+                var item = SctItem.CreateFromStream(ds, ItemHeaders[i].DataSize);
 
-                bool isLastItem = (i == file.ItemHeaders.Count - 1);
-                uint start = file.ItemHeaders[i].DataOffset;
-                DataStream ds = new DataStream(new MemoryStream(item.Data), Endianness.BigEndian);
-                for (long offset = 0; offset < file.ItemHeaders[i].DataSize; offset += 4)
+                bool isLastItem = (i == ItemHeaders.Count - 1);
+                uint start = ItemHeaders[i].DataOffset;
+                DataStream dataStream = new DataStream(new MemoryStream(item.Data), Endianness.BigEndian);
+                for (long offset = 0; offset < ItemHeaders[i].DataSize; offset += 4)
                 {
-                    long relOffset = ds.ReadUint();
+                    long relOffset = dataStream.ReadUint();
                     long absOffset = relOffset + start + offset;
-                    long filenameSectionOffset = file.ItemHeaders[file.ItemHeaders.Count - 1].DataOffset;
-                    if (!isLastItem && absOffset >= filenameSectionOffset && absOffset < dsr.Length)
+                    long filenameSectionOffset = ItemHeaders[ItemHeaders.Count - 1].DataOffset;
+                    // Check if the offset points to one of the filenames at the end of the file.
+                    if (!isLastItem && absOffset >= filenameSectionOffset && absOffset < ds.Length)
                     {
-                        long oldPos = dsr.StreamPosition;
-                        dsr.Stream.Seek(absOffset, SeekOrigin.Begin);
+                        long oldPos = ds.StreamPosition;
+                        ds.Stream.Seek(absOffset, SeekOrigin.Begin);
                         int nameLength = 0;
                         while (true)
                         {
-                            byte b = dsr.ReadByte();
+                            byte b = ds.ReadByte();
                             char c = (char)b;
                             if (char.IsLetterOrDigit(c) || c == '.' || c == '_')
                             {
@@ -101,7 +91,7 @@ namespace SctEditor.Sct
                             }
                             else if (b == 0 && nameLength > 0)
                             {
-                                file.ItemHeaders[i].FileNamePointers.Add(offset);
+                                ItemHeaders[i].FileNamePointers.Add(offset);
                                 break;
                             }
                             else
@@ -109,28 +99,51 @@ namespace SctEditor.Sct
                                 break;
                             }
 
-                        }                           
-                        dsr.Stream.Seek(oldPos, SeekOrigin.Begin);
+                        }
+                        ds.Stream.Seek(oldPos, SeekOrigin.Begin);
                     }
                     if (absOffset <= int.MaxValue)
                     {
-                        for (int j = 0; j < file.ItemHeaders.Count; j++)
+                        for (int j = 0; j < ItemHeaders.Count; j++)
                         {
-                            if (i != j && file.ItemHeaders[j].DataOffset == absOffset)
+                            if (i != j && ItemHeaders[j].DataOffset == absOffset)
                             {
-                                if (!file.PointerRecords.ContainsKey(i))
+                                if (!PointerRecords.ContainsKey(i))
                                 {
-                                    file.PointerRecords.Add(i, new List<PointerRecord>());
+                                    PointerRecords.Add(i, new List<PointerRecord>());
                                 }
-                                var pointersForItem = file.PointerRecords[i];
+                                var pointersForItem = PointerRecords[i];
                                 pointersForItem.Add(new PointerRecord { TargetIndex = j, Offset = offset });
                             }
                         }
                     }
                 }
 
-                file.Items.Add(item);
+                Items.Add(item);
             }
+        }
+
+        public static SctFile CreateFromStream(DataStream ds)
+        {
+            SctFile file = new SctFile();
+
+            file.FileHeaderPreamble = ds.ReadBytes(SctItemCountOffset);
+            // Read how many items there are.
+            file.SctItemCount = ds.ReadUint(SctItemCountOffset);
+            // This then tells us the size of the item header section
+            file.ItemHeaderSectionSize = file.SctItemCount * SctItemHeader.HeaderSize;
+
+            // Read the item headers
+            file.ReadItemHeaders(ds);
+
+            // FIXME: Size of the final item is "whatever was left", but that's not really correct.
+            // The size of the common ending blocks (with all the LIG_* and VIB_* items) is fixed in all files, so
+            // we could work it out that way.
+            uint finalItemSize = (uint)ds.Length - file.ItemHeaders[(int)file.SctItemCount - 1].DataOffset;
+            file.ItemHeaders[(int)file.SctItemCount - 1].DataSize = finalItemSize;
+
+            // Now that we know the header information, we can read in the data blocks.
+            file.ReadDataBlocks(ds);
 
             return file;
         }
@@ -197,10 +210,7 @@ namespace SctEditor.Sct
             {
                 var offset = ItemHeaders[itemIndex].FileNamePointers[i];
                 var newPointer = ds.ReadUint(offset) + _filenamePointerAdjust;
-                Items[itemIndex].Data[offset + 0] = (byte)((newPointer & 0xff000000) >> 24);
-                Items[itemIndex].Data[offset + 1] = (byte)((newPointer & 0x00ff0000) >> 16);
-                Items[itemIndex].Data[offset + 2] = (byte)((newPointer & 0x0000ff00) >> 8);
-                Items[itemIndex].Data[offset + 3] = (byte)(newPointer & 0x000000ff);
+                UpdatePointerValue(itemIndex, newPointer, offset);
             }
 
             if (PointerRecords.ContainsKey(itemIndex))
@@ -213,13 +223,20 @@ namespace SctEditor.Sct
                     {
                         var offset = records[i].Offset;
                         var newPointer = ds.ReadUint(offset) + targetItem.PointerAdjust;
-                        Items[itemIndex].Data[offset + 0] = (byte)((newPointer & 0xff000000) >> 24);
-                        Items[itemIndex].Data[offset + 1] = (byte)((newPointer & 0x00ff0000) >> 16);
-                        Items[itemIndex].Data[offset + 2] = (byte)((newPointer & 0x0000ff00) >> 8);
-                        Items[itemIndex].Data[offset + 3] = (byte)(newPointer & 0x000000ff);
+                        UpdatePointerValue(itemIndex, newPointer, offset);
                     }
                 }
             }
+
+            ds.Stream.Close();
+        }
+
+        private void UpdatePointerValue(int itemIndex, long newPointer, long offset)
+        {
+            Items[itemIndex].Data[offset + 0] = (byte)((newPointer & 0xff000000) >> 24);
+            Items[itemIndex].Data[offset + 1] = (byte)((newPointer & 0x00ff0000) >> 16);
+            Items[itemIndex].Data[offset + 2] = (byte)((newPointer & 0x0000ff00) >> 8);
+            Items[itemIndex].Data[offset + 3] = (byte)(newPointer & 0x000000ff);
         }
     }
 }

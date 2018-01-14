@@ -18,7 +18,6 @@ namespace SctEditor.Sct
             // All we care about right now is if it's a dialog item or not.
             // Skip the preamble
             long startPosition = dsr.StreamPosition;
-            //dsr.StreamPosition += ItemPreambleSize;
             
             byte[] rawData = dsr.ReadBytes((int)size);
 
